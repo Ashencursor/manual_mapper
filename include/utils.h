@@ -6,7 +6,7 @@
 #include <type_traits>
 
 namespace utils {
-	void log(char str[]);
+	void log(const char* str);
 	void* get_proc_handle(std::string_view name);
 	uintptr_t get_proc_addr(void* hproc, const char* module_name);
 

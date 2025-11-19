@@ -7,7 +7,7 @@
 static constexpr DWORD max_path = 260; // 256 for characters, 1 for null terminator, 2 for C:, 1 for back slash
 
 // TODO: Should i do char* or char str[]...
-void utils::log(char str[]){
+void utils::log(const char* str){
 		std::cout << str << '\n';
 		std::cin.get();
 	}
@@ -51,7 +51,7 @@ uintptr_t utils::get_proc_addr(void* hproc, const char* module_name){
 				name.resize(length);
 			}
 			if(_stricmp(name.c_str(), module_name) == 0){
-				std::cout << "Notepad.exe Base: " << module_arr[i] << '\n';
+				std::cout << "[+] Notepad.exe Base: " << module_arr[i] << '\n';
 				return reinterpret_cast<uintptr_t>(module_arr[i]);
 			}
 		}
