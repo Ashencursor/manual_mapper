@@ -3,6 +3,9 @@
 #include <atomic>
 #include <clocale>
 #include <cwctype>
+#include <vector>
+#include <fstream>
+#include <filesystem>
 
 static constexpr DWORD max_path = 260; // 256 for characters, 1 for null terminator, 2 for C:, 1 for back slash
 
@@ -81,6 +84,29 @@ void utils::write_proc_mem(void *hproc, uintptr_t base_addr, void *buffer, size_
 				log("[-] Failed to write_proc_mem");
 			}
 }
+
+bool utils::load_bytes(const char* file_path, std::vector<std::uint8_t>& dll_bytes)
+{
+	
+	if(!std::filesystem::path(file_path).extension().string().ends_with(".dll")){
+		log("[-] invalid file path");
+		return false;
+	}	
+	std::ifstream file(file_path, std::ios::binary);
+	if(!file.good()){
+		log("[-] failed to load file");
+		return false;
+	}
+
+	dll_bytes.resize(std::filesystem::file_size(file_path));
+	if(!file.read(reinterpret_cast<char*>(dll_bytes.data()), dll_bytes.size())){
+		log("[-] Failed to read data to file");
+		return false;
+	}
+	return true;
+}
+
+
 
 template<typename T>
 void utils::to_lower(T& str){

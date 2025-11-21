@@ -8,6 +8,7 @@
 #include <psapi.h>
 #include <array>
 #include "../include/utils.h"
+#include <vector>
 
 // 1. Get targetproc addr
 // 2. parse target PE 
@@ -36,31 +37,22 @@ union reloc_info {
 
 bool relocate_table(void* hproc, uintptr_t proc_addr, uintptr_t dll_base, PIMAGE_NT_HEADERS nt){
 	if(dll_base == nt->OptionalHeader.ImageBase){ return 0; }
-	//Parse NT headers
-	// VitualAddress is located in target
-	auto reloc_entries = reinterpret_cast<PIMAGE_BASE_RELOCATION>(nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
-	std::array<std::uint8_t, 16> reloc_buffer; // TODO: Check the size and type
+	uintptr_t reloc_start = dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
 	size_t bytes_read {};
-	utils::read_proc_mem(hproc, proc_addr + reinterpret_cast<uintptr_t>(reloc_entries), reloc_buffer.data(), reloc_buffer.size(), &bytes_read);
 
-	auto reloc_blocks = reinterpret_cast<PIMAGE_BASE_RELOCATION>(reloc_buffer.data());
 	uintptr_t base_offset = proc_addr - nt->OptionalHeader.ImageBase;
-
-	std::size_t bytes = reloc_blocks->SizeOfBlock;
-	// 1. Check if block is valid
-	// 2. loop through reloc entries
-	// 3. add to the offset the base_offset to reloc_block offset
-	// 4. go to next block until end and then next entry
-	//
-	//return true; // WORKS, exits program
-	for(int i = 0; i < bytes; ++i){
-		std::uint32_t reloc_block = reloc_blocks->VirtualAddress;
+	
+	std::size_t total_size{};
+	while(true){
+		std::size_t curr_block_size {};
 		
-		//reloc_blocks++; // Go to next block(crashes i think)
 	}
-		return false;
+	return false;
 }
-
+bool load_section(void* hproc){
+	
+	return false;
+}
 int main() {
 	void* hproc = utils::get_proc_handle("Notepad.exe");
 	if(hproc == nullptr){
@@ -74,13 +66,17 @@ int main() {
 		return 0;
 	}
 	
-	std::array<std::uint8_t, sizeof(IMAGE_DOS_HEADER)> dos_buffer;
-	size_t bytes_read {};
-	auto dos = get_dos_header(hproc, proc_addr, dos_buffer, &bytes_read);	
-
-	std::array<std::uint8_t, sizeof(IMAGE_NT_HEADERS)> nt_buffer;
-	utils::read_proc_mem(hproc, (proc_addr + dos->e_lfanew), nt_buffer.data(), nt_buffer.size(), &bytes_read);
-	auto nt = reinterpret_cast<PIMAGE_NT_HEADERS>(nt_buffer.data());
+	std::vector<std::uint8_t> dll_bytes;
+	if(!utils::load_bytes("C:\\Users\\ashen\\Desktop\\projects\\bo4\\build\\bo4.dll", dll_bytes)){
+		utils::log("[-] Failed to load dll bytes");
+		return 0;
+	}
+	auto dos = reinterpret_cast<PIMAGE_DOS_HEADER>(dll_bytes.data());
+	if(dos->e_magic != IMAGE_DOS_SIGNATURE) {
+		utils::log("[-] Failed to get dos header");
+		return 0;
+	}
+	auto nt = reinterpret_cast<PIMAGE_NT_HEADERS>(dll_bytes.data() + dos->e_lfanew);
 	if(nt->Signature != IMAGE_NT_SIGNATURE){
 		utils::log("[-] Failed to get nt header");
 		return 0;
@@ -89,9 +85,7 @@ int main() {
 	auto preferred_base = reinterpret_cast<uintptr_t>(nt->OptionalHeader.ImageBase);
 	auto image_size = nt->OptionalHeader.SizeOfImage;
 
-	// 1. Alloc place for dll
-	// 2. Compare to preferred_base
-
+	// Find where in target to write to
 	void* dll_base = VirtualAllocEx(hproc, reinterpret_cast<LPVOID>(preferred_base), image_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	if(reinterpret_cast<uintptr_t>(dll_base) != preferred_base){
 		utils::log("[] Dll couldn't load at preferred base");
@@ -101,13 +95,16 @@ int main() {
 			return 0;
 		}
 	}
-	// reloc_table(func call crashes if it doesnt ret a val, why?)
-	if(!relocate_table(hproc, proc_addr, reinterpret_cast<uintptr_t>(dll_base), nt)){
-		utils::log("[-] Failed to reloc");
-		return 0;
+	void* local_dll_base = VirtualAlloc(nullptr, image_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+
+	// 1. Must write headers and sections to local_dll_base 
+	memcpy(local_dll_base, dll_bytes.data(), nt->OptionalHeader.SizeOfHeaders);
+	// 2. write sections to be aligned with virtual address space
+	std::size_t section_num = nt->FileHeader.NumberOfSections;
+	for(std::size_t i = 0; i < section_num; ++i){
+
 	}
-	//auto data_dir = reinterpret_cast<PIMAGE_DATA_DIRECTORY>(nt->OptionalHeader.DataDirectory);
-	//auto reloc_table = reinterpret_cast<PIMAGE_RELOCATION>(data_dir[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
 
 	utils::log("[+] Exiting program");
 	return 0;

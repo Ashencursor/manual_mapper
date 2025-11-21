@@ -4,6 +4,7 @@
 #include <TlHelp32.h>
 #include <Psapi.h>
 #include <type_traits>
+#include <vector>
 
 namespace utils {
 	void log(const char* str);
@@ -12,6 +13,7 @@ namespace utils {
 
 	void read_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);
 	void write_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);
+	bool load_bytes(const char* file_path, std::vector<std::uint8_t>& dll_bytes);
 
 	template<typename T>
 	void to_lower(T& str);
