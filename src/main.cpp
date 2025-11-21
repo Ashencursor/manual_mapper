@@ -35,7 +35,7 @@ union reloc_info {
 	std::uint16_t info;
 };
 
-bool relocate_table(void* hproc, uintptr_t proc_addr, uintptr_t dll_base, PIMAGE_NT_HEADERS nt){
+bool relocate_table(uintptr_t proc_addr, uintptr_t dll_base, PIMAGE_NT_HEADERS nt){
 	if(dll_base == nt->OptionalHeader.ImageBase){ return 0; }
 	uintptr_t reloc_start = dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress;
 	size_t bytes_read {};
@@ -43,16 +43,18 @@ bool relocate_table(void* hproc, uintptr_t proc_addr, uintptr_t dll_base, PIMAGE
 	uintptr_t base_offset = proc_addr - nt->OptionalHeader.ImageBase;
 	
 	std::size_t total_size{};
-	while(true){
-		std::size_t curr_block_size {};
+	//while(true){
+		//std::size_t curr_block_size {};
 		
-	}
+	//}
 	return false;
 }
+
 bool load_section(void* hproc){
 	
 	return false;
 }
+
 int main() {
 	void* hproc = utils::get_proc_handle("Notepad.exe");
 	if(hproc == nullptr){
@@ -88,7 +90,7 @@ int main() {
 	// Find where in target to write to
 	void* dll_base = VirtualAllocEx(hproc, reinterpret_cast<LPVOID>(preferred_base), image_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 	if(reinterpret_cast<uintptr_t>(dll_base) != preferred_base){
-		utils::log("[] Dll couldn't load at preferred base");
+		utils::log("[-] Dll couldn't load at preferred base");
 		dll_base = VirtualAllocEx(hproc, nullptr, image_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 		if(!dll_base){
 			utils::log("[-] Failed to allocate memory for the dll");
@@ -102,10 +104,17 @@ int main() {
 	memcpy(local_dll_base, dll_bytes.data(), nt->OptionalHeader.SizeOfHeaders);
 	// 2. write sections to be aligned with virtual address space
 	std::size_t section_num = nt->FileHeader.NumberOfSections;
+	PIMAGE_SECTION_HEADER section_header = IMAGE_FIRST_SECTION(nt);
 	for(std::size_t i = 0; i < section_num; ++i){
-
+		memcpy(reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(local_dll_base) + section_header->VirtualAddress),
+				reinterpret_cast<void*>(dll_bytes.data() + section_header->PointerToRawData),
+				section_header->SizeOfRawData);
+		section_header++;
 	}
-
+	if(!relocate_table(proc_addr, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
+		utils::log("[-] Failed to relocate base");
+		return 0;
+	}
 	utils::log("[+] Exiting program");
 	return 0;
 }
