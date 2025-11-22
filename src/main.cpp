@@ -47,8 +47,9 @@ bool resolve_iat(void* hproc, std::vector<std::uint8_t>& dll_bytes, uintptr_t lo
 		utils::log("[-] Failed to gret ProcessBasicInformation");
 		return false;
 	}
+
 	PEB peb = *pi.PebBaseAddress;
-	PPEB_LDR_DATA lrd = peb.Ldr; 
+	PPEB_LDR_DATA lrd = peb.Ldr; // Exception thrown bc access nonread mem
 	PLIST_ENTRY list = &lrd->InMemoryOrderModuleList;
 
 	while(true){
@@ -83,15 +84,12 @@ bool relocate_table(uintptr_t proc_addr, uintptr_t local_dll_base, PIMAGE_NT_HEA
 		}
 		std::size_t entry_count = (block_size - 2*sizeof(DWORD)) / sizeof(WORD);
 		for(int i = 0; i < entry_count; ++i){
-			RelocInfo* entry = reinterpret_cast<RelocInfo*>(local_dll_base + reloc_block->VirtualAddress + sizeof(IMAGE_BASE_RELOCATION) + i*sizeof(WORD));	
-			if (entry->offset) {
-
-			}
+			RelocInfo* entry = reinterpret_cast<RelocInfo*>(local_dll_base + reloc_block->VirtualAddress + sizeof(IMAGE_BASE_RELOCATION) + i*sizeof(WORD));
 			uintptr_t data = *reinterpret_cast<uintptr_t*>(local_dll_base + reloc_block->VirtualAddress + entry->offset) + base_offset;
+
 			memcpy(reinterpret_cast<void*>(local_dll_base + reloc_block->VirtualAddress  + entry->offset),
 					reinterpret_cast<void*>(&data),
-					sizeof(WORD)
-					);
+					sizeof(WORD));
 		}
 		reloc_block = reinterpret_cast<PIMAGE_BASE_RELOCATION>(reinterpret_cast<uintptr_t>(reloc_block) + block_size);
 	}
