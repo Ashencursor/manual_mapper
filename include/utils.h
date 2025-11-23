@@ -11,8 +11,8 @@ namespace utils {
 	void* get_proc_handle(std::string_view name);
 	uintptr_t get_proc_addr(void* hproc, const char* module_name);
 
-	void read_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);
-	void write_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);
+	bool read_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);
+	bool write_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);
 	bool load_bytes(const char* file_path, std::vector<std::uint8_t>& dll_bytes);
 
 	template<typename T>

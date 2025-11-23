@@ -62,7 +62,7 @@ uintptr_t utils::get_proc_addr(void* hproc, const char* module_name){
 	return 0;
 }
 
-void utils::read_proc_mem(void* hproc, uintptr_t base_address, void* buffer, size_t size, size_t* num_bytes_read){
+bool utils::read_proc_mem(void* hproc, uintptr_t base_address, void* buffer, size_t size, size_t* num_bytes_read){
 	if(!ReadProcessMemory(
 				reinterpret_cast<HANDLE>(hproc),
 				reinterpret_cast<LPCVOID>(base_address), 
@@ -72,9 +72,11 @@ void utils::read_proc_mem(void* hproc, uintptr_t base_address, void* buffer, siz
 			)
 	{
 		log("[-] Failed to read_proc_mem");
+		return false;
 	}
+	return true;
 }
-void utils::write_proc_mem(void *hproc, uintptr_t base_addr, void *buffer, size_t size, size_t *num_bytes_read){
+bool utils::write_proc_mem(void *hproc, uintptr_t base_addr, void *buffer, size_t size, size_t *num_bytes_read){
 	if(!WriteProcessMemory(hproc,
 				reinterpret_cast<void*>(base_addr),
 				reinterpret_cast<void*>(buffer),
@@ -82,7 +84,9 @@ void utils::write_proc_mem(void *hproc, uintptr_t base_addr, void *buffer, size_
 				num_bytes_read))
 			{
 				log("[-] Failed to write_proc_mem");
+				return false;
 			}
+	return true;
 }
 
 bool utils::load_bytes(const char* file_path, std::vector<std::uint8_t>& dll_bytes)

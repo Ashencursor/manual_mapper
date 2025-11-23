@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <limits>
 #include <memoryapi.h>
+#include <rpcndr.h>
 #include <winnt.h>
 #include <TlHelp32.h>
 #include <psapi.h>
@@ -11,6 +12,8 @@
 #include <vector>
 #include <ntstatus.h>
 #include <winternl.h>
+#include "../include/windefs.h"
+#include <iostream>
 
 // TODO: Look at flags for VirtualAlloxEx(confirm knowledge, recall)
 
@@ -23,18 +26,12 @@ PIMAGE_DOS_HEADER get_dos_header(void* hproc, uintptr_t proc_addr, std::array<st
 	return reinterpret_cast<PIMAGE_DOS_HEADER>(buffer.data());
 }
 
-typedef NTSTATUS(NTAPI* NtQueryInformationProcess_t)(
-  [in]            HANDLE           ProcessHandle,
-  [in]            PROCESSINFOCLASS ProcessInformationClass,
-  [out]           PVOID            ProcessInformation,
-  [in]            ULONG            ProcessInformationLength,
-  [out, optional] PULONG           ReturnLength
-);
 
 bool resolve_iat(void* hproc, std::vector<std::uint8_t>& dll_bytes, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	NtQueryInformationProcess_t my_NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t>(GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess"));
 
 	auto iat_table = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(dll_bytes.data() + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+
 	PROCESS_BASIC_INFORMATION pi;
 	std::size_t pi_size {};
 	NTSTATUS status = my_NtQueryInformationProcess(
@@ -43,25 +40,25 @@ bool resolve_iat(void* hproc, std::vector<std::uint8_t>& dll_bytes, uintptr_t lo
 			&pi, 
 			sizeof(PROCESS_BASIC_INFORMATION), 
 			reinterpret_cast<PULONG>(&pi_size));
+
 	if(status != STATUS_SUCCESS){
 		utils::log("[-] Failed to gret ProcessBasicInformation");
 		return false;
 	}
 
-	PEB peb = *pi.PebBaseAddress;
-	PPEB_LDR_DATA lrd = peb.Ldr; // Exception thrown bc access nonread mem
-	PLIST_ENTRY list = &lrd->InMemoryOrderModuleList;
-
+	std::size_t bytes_read {};
+	PPEB peb = pi.PebBaseAddress;
+	
+	int i {};
 	while(true){
-		if((list == nullptr) || (list->Flink == nullptr)){
-			break;
-		}
-		PLDR_DATA_TABLE_ENTRY data_table = reinterpret_cast<PLDR_DATA_TABLE_ENTRY>(list->Flink);
-
-		list = data_table->InMemoryOrderLinks.Flink;
+		std::cout << "iteration: " << i << '\n';
+		
+		i++;
 	}
 	return true;
 }
+// wprintf(L"The string is: [%.*ls]\n", data_table_b.FullDllName.Length / sizeof(WCHAR), data_table_b.FullDllName.Buffer);
+
 
 union RelocInfo { 
 	struct {
