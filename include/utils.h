@@ -9,7 +9,7 @@
 namespace utils {
 	void log(const char* str);
 	void* get_proc_handle(std::string_view name);
-	uintptr_t get_proc_addr(void* hproc, const char* module_name);
+	uintptr_t get_module_addr(void* hproc, const char* module_name);
 
 	bool read_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);
 	bool write_proc_mem(void* hproc, uintptr_t base_addr, void* buffer, size_t size, size_t* num_bytes_read);

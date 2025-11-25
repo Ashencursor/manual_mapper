@@ -40,7 +40,7 @@ void* utils::get_proc_handle(std::string_view name){
 	}
 	return nullptr;
 }
-uintptr_t utils::get_proc_addr(void* hproc, const char* module_name){
+uintptr_t utils::get_module_addr(void* hproc, const char* module_name){
 	uintptr_t addr {};
 	HMODULE module_arr[1024]; // Same as void* arr[1024]
 	DWORD cb_needed {};
@@ -49,12 +49,15 @@ uintptr_t utils::get_proc_addr(void* hproc, const char* module_name){
 	int count = cb_needed / sizeof(HMODULE);
 		for(int i = 0; i < count; ++i){
 			std::string name(max_path, '\0');
+
 			DWORD length = GetModuleBaseNameA(hproc, module_arr[i], name.data(), max_path);
+
 			if(length > 0){
 				name.resize(length);
 			}
+
 			if(_stricmp(name.c_str(), module_name) == 0){
-				std::cout << "[+] Notepad.exe Base: " << module_arr[i] << '\n';
+				std::cout << "[+] " << module_name << " base address: "<< module_arr[i] << '\n';
 				return reinterpret_cast<uintptr_t>(module_arr[i]);
 			}
 		}

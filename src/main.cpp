@@ -1,9 +1,11 @@
 #include <Windows.h>
 #include <chrono>
 #include <cstdint>
+#include <libloaderapi.h>
 #include <limits>
 #include <memoryapi.h>
 #include <rpcndr.h>
+#include <string>
 #include <winnt.h>
 #include <TlHelp32.h>
 #include <psapi.h>
@@ -17,16 +19,43 @@
 
 // TODO: Look at flags for VirtualAlloxEx(confirm knowledge, recall)
 
-PIMAGE_DOS_HEADER get_dos_header(void* hproc, uintptr_t proc_addr, std::array<std::uint8_t, sizeof(IMAGE_DOS_HEADER)>& buffer, size_t* bytes_read){
-	utils::read_proc_mem(hproc, proc_addr, buffer.data(), buffer.size(), bytes_read);
-	if(reinterpret_cast<PIMAGE_DOS_HEADER>(buffer.data())->e_magic != IMAGE_DOS_SIGNATURE) {
-		utils::log("[-] Failed to get dos header");
-		return 0;
+
+bool resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
+	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+
+	while(descriptor->Name != 0){
+		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
+		auto thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->FirstThunk);
+		auto original_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->OriginalFirstThunk);
+		uintptr_t remote_module = utils::get_module_addr(hproc, dll_name.c_str());
+		std::cout << "[DLL] :" << dll_name << '\n';
+		
+		while(thunk->u1.AddressOfData != 0){
+			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG){
+				utils::log("[-] ordinal used");
+
+			}
+			else {
+				auto name_table = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(local_dll_base + original_thunk->u1.AddressOfData);
+
+				std::string import_name = name_table->Name;
+				uintptr_t import_addr = reinterpret_cast<uintptr_t>(
+						GetProcAddress(GetModuleHandleA(dll_name.data()), import_name.data())
+						);
+				std::cout << "import: " << import_name << " addr:  " << import_addr << '\n';
+
+				uintptr_t import_rva = import_addr - remote_module;
+				thunk->u1.Function = remote_module + import_rva;
+			}
+			thunk++;
+			original_thunk++;
+		}
+
+		descriptor++;
 	}
-	return reinterpret_cast<PIMAGE_DOS_HEADER>(buffer.data());
+
+	return true;
 }
-
-
 bool resolve_iat(void* hproc, std::vector<std::uint8_t>& dll_bytes, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	NtQueryInformationProcess_t my_NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t>(GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess"));
 
@@ -112,7 +141,7 @@ int main() {
 		return 0; 
 	}
 
-	uintptr_t proc_addr = utils::get_proc_addr(hproc, "notepad.exe");
+	uintptr_t proc_addr = utils::get_module_addr(hproc, "notepad.exe");
 	if(proc_addr == 0) {
 		utils::log("[-] Failed to get proc addr");
 		return 0;
@@ -161,7 +190,7 @@ int main() {
 		utils::log("[-] Failed to relocate base");
 		return 0;
 	}
-	if(!resolve_iat(hproc, dll_bytes, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
+	if(!resolve_imports(dll_bytes, hproc, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
 		utils::log("[-] Failed to resolve imports");
 		return 0;
 	}
