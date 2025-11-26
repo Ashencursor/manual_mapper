@@ -6,6 +6,7 @@
 #include <vector>
 #include <fstream>
 #include <filesystem>
+#include <iostream>
 
 static constexpr DWORD max_path = 260; // 256 for characters, 1 for null terminator, 2 for C:, 1 for back slash
 

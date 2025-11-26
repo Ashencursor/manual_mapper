@@ -1,10 +1,9 @@
 #pragma once
 #include <Windows.h>
-#include <iostream>
 #include <TlHelp32.h>
 #include <Psapi.h>
-#include <type_traits>
 #include <vector>
+#include <string_view>
 
 namespace utils {
 	void log(const char* str);

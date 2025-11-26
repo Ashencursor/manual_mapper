@@ -1,137 +1,19 @@
 #include <Windows.h>
-#include <chrono>
-#include <cstdint>
-#include <libloaderapi.h>
-#include <limits>
-#include <memoryapi.h>
-#include <rpcndr.h>
-#include <string>
-#include <winnt.h>
-#include <TlHelp32.h>
-#include <psapi.h>
-#include <array>
-#include "../include/utils.h"
+#include <minwinbase.h>
 #include <vector>
-#include <ntstatus.h>
-#include <winternl.h>
-#include "../include/windefs.h"
-#include <iostream>
+#include <winnt.h>
+#include "../include/utils.h"
+#include "../include/pe.h"
 
-// TODO: Look at flags for VirtualAlloxEx(confirm knowledge, recall)
-
-
-bool resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
-	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
-
-	while(descriptor->Name != 0){
-		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
-		auto thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->FirstThunk);
-		auto original_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->OriginalFirstThunk);
-		uintptr_t remote_module = utils::get_module_addr(hproc, dll_name.c_str());
-		std::cout << "[DLL] :" << dll_name << '\n';
-		
-		while(thunk->u1.AddressOfData != 0){
-			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG){
-				utils::log("[-] ordinal used");
-
-			}
-			else {
-				auto name_table = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(local_dll_base + original_thunk->u1.AddressOfData);
-
-				std::string import_name = name_table->Name;
-				uintptr_t import_addr = reinterpret_cast<uintptr_t>(
-						GetProcAddress(GetModuleHandleA(dll_name.data()), import_name.data())
-						);
-				std::cout << "import: " << import_name << " addr:  " << import_addr << '\n';
-
-				uintptr_t import_rva = import_addr - remote_module;
-				thunk->u1.Function = remote_module + import_rva;
-			}
-			thunk++;
-			original_thunk++;
-		}
-
-		descriptor++;
-	}
-
-	return true;
-}
-bool resolve_iat(void* hproc, std::vector<std::uint8_t>& dll_bytes, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
-	NtQueryInformationProcess_t my_NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t>(GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess"));
-
-	auto iat_table = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(dll_bytes.data() + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
-
-	PROCESS_BASIC_INFORMATION pi;
-	std::size_t pi_size {};
-	NTSTATUS status = my_NtQueryInformationProcess(
-			hproc,
-			ProcessBasicInformation, 
-			&pi, 
-			sizeof(PROCESS_BASIC_INFORMATION), 
-			reinterpret_cast<PULONG>(&pi_size));
-
-	if(status != STATUS_SUCCESS){
-		utils::log("[-] Failed to gret ProcessBasicInformation");
-		return false;
-	}
-
-	std::size_t bytes_read {};
-	PPEB peb = pi.PebBaseAddress;
-	
-	int i {};
-	while(true){
-		std::cout << "iteration: " << i << '\n';
-		
-		i++;
-	}
-	return true;
-}
-// wprintf(L"The string is: [%.*ls]\n", data_table_b.FullDllName.Length / sizeof(WCHAR), data_table_b.FullDllName.Buffer);
+#include <string>
 
 
-union RelocInfo { 
-	struct {
-		std::uint16_t type : 4;
-		std::uint16_t offset : 12;
-	};
-	std::uint16_t info;
-};
 
-bool relocate_table(uintptr_t proc_addr, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
-	if(local_dll_base == nt->OptionalHeader.ImageBase){ return 0; }
-	auto reloc_start = reinterpret_cast<PIMAGE_BASE_RELOCATION>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
-	auto reloc_block = reinterpret_cast<PIMAGE_BASE_RELOCATION>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
-	uintptr_t base_offset = proc_addr - nt->OptionalHeader.ImageBase;
-	
-	while(true){
-		std::size_t block_size {};
-		if((reloc_block == nullptr) || !(block_size = reloc_block->SizeOfBlock)){
-			break;
-		}
-		std::size_t entry_count = (block_size - 2*sizeof(DWORD)) / sizeof(WORD);
-		for(int i = 0; i < entry_count; ++i){
-			RelocInfo* entry = reinterpret_cast<RelocInfo*>(local_dll_base + reloc_block->VirtualAddress + sizeof(IMAGE_BASE_RELOCATION) + i*sizeof(WORD));
-			uintptr_t data = *reinterpret_cast<uintptr_t*>(local_dll_base + reloc_block->VirtualAddress + entry->offset) + base_offset;
-
-			memcpy(reinterpret_cast<void*>(local_dll_base + reloc_block->VirtualAddress  + entry->offset),
-					reinterpret_cast<void*>(&data),
-					sizeof(WORD));
-		}
-		reloc_block = reinterpret_cast<PIMAGE_BASE_RELOCATION>(reinterpret_cast<uintptr_t>(reloc_block) + block_size);
-	}
-	return true;
-}
-
-bool load_sections(std::vector<std::uint8_t>& dll_bytes, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
-	std::size_t section_num = nt->FileHeader.NumberOfSections;
-	PIMAGE_SECTION_HEADER section_header = IMAGE_FIRST_SECTION(nt);
-	for(std::size_t i = 0; i < section_num; ++i){
-		memcpy(reinterpret_cast<void*>(local_dll_base + section_header->VirtualAddress),
-				reinterpret_cast<void*>(dll_bytes.data() + section_header->PointerToRawData),
-				section_header->SizeOfRawData);
-		section_header++;
-	}
-	return true;
+void shellcode(uintptr_t AddressOfEntryPoint){
+	using dllmain_t = int(__stdcall*)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserve);
+	dllmain_t dllmain = reinterpret_cast<dllmain_t>(AddressOfEntryPoint);
+	dllmain(nullptr, DLL_PROCESS_ATTACH, nullptr);
+	return;
 }
 
 int main() {
@@ -148,7 +30,7 @@ int main() {
 	}
 	
 	std::vector<std::uint8_t> dll_bytes;
-	if(!utils::load_bytes("C:\\Users\\ashen\\Desktop\\projects\\bo4\\build\\bo4.dll", dll_bytes)){
+	if(!utils::load_bytes("C:\\Users\\ashen\\Desktop\\projects\\test\\build\\test.dll", dll_bytes)){
 		utils::log("[-] Failed to load dll bytes");
 		return 0;
 	}
@@ -182,18 +64,41 @@ int main() {
 	// 1. Must write headers and sections to local_dll_base 
 	memcpy(local_dll_base, dll_bytes.data(), nt->OptionalHeader.SizeOfHeaders);
 	// 2. write sections to be aligned with virtual address space
-	if(!load_sections(dll_bytes, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
+	if(!PE::load_sections(dll_bytes, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
 		utils::log("[-] Failed to write headers");
 		return 0;
 	}	
-	if(!relocate_table(proc_addr, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
+	if(!PE::relocate_table(proc_addr, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
 		utils::log("[-] Failed to relocate base");
 		return 0;
 	}
-	if(!resolve_imports(dll_bytes, hproc, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
+	if(!PE::resolve_imports(dll_bytes, hproc, proc_addr, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
 		utils::log("[-] Failed to resolve imports");
 		return 0;
 	}
+	
+	std::size_t bytes_written{};
+	void* shellcode_addr = VirtualAllocEx(hproc, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	if(!shellcode_addr){
+		utils::log("[-] Failed to alloc mem for shellcode");
+		return 0;
+	}
+	if(!utils::write_proc_mem(hproc, reinterpret_cast<uintptr_t>(shellcode_addr), reinterpret_cast<void*>(&shellcode), 0x1000, &bytes_written)){
+		utils::log("[-] Failed to write shellcode to target");
+		return 0;
+	}
+
+	std::string shelladdr = std::to_string((uintptr_t)shellcode_addr);
+	utils::log(shelladdr.c_str());
+
+	CreateRemoteThread(hproc,
+			nullptr, 
+			64,
+			reinterpret_cast<LPTHREAD_START_ROUTINE>(shellcode_addr), 
+			reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(remote_dll_base) + nt->OptionalHeader.AddressOfEntryPoint), 
+			0, 
+			nullptr);
+
 	utils::log("[+] Exiting program");
 	return 0;
 }
