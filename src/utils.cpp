@@ -7,6 +7,7 @@
 #include <fstream>
 #include <filesystem>
 #include <iostream>
+#include <print>
 
 static constexpr DWORD max_path = 260; // 256 for characters, 1 for null terminator, 2 for C:, 1 for back slash
 
@@ -44,7 +45,9 @@ void* utils::get_proc_handle(std::string_view name){
 uintptr_t utils::get_module_addr(void* hproc, const char* module_name){
 	HMODULE module_arr[1024]; // Same as void* arr[1024]
 	DWORD cb_needed {};
+	
 
+	// Does this need to be an external process I pass as hproc, or can i do GetModuleHandleA(nullptr)?
 	if(EnumProcessModulesEx(hproc, module_arr, sizeof(module_arr), &cb_needed, LIST_MODULES_ALL)){
 		int count = cb_needed / sizeof(HMODULE);
 		for(int i = 0; i < count; ++i){
@@ -61,6 +64,8 @@ uintptr_t utils::get_module_addr(void* hproc, const char* module_name){
 				return reinterpret_cast<uintptr_t>(module_arr[i]);
 			}
 		}
+	} else {
+		std::println("[-] Failed to EnumProcessModulesEx");
 	}
 	return 0;
 }
@@ -83,6 +88,8 @@ std::vector<std::string> utils::get_module_names(void* hproc){
 			module_names.push_back(name);
 		}
 		return module_names;
+	} else {
+		std::println("[-] Failed to EnumProcessModulesEx");
 	}
 	return {};
 

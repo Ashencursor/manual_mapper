@@ -5,13 +5,13 @@
 #include "../include/pe.h"
 
 int main() {
-	void* hproc = utils::get_proc_handle("Notepad.exe");
+	void* hproc = utils::get_proc_handle("64bit testexe.exe");
 	if(hproc == nullptr){
 		utils::log("[-] Failed to get process handle");		
 		return 0; 
 	}
 
-	uintptr_t proc_addr = utils::get_module_addr(hproc, "notepad.exe");
+	uintptr_t proc_addr = utils::get_module_addr(hproc, "64bit testexe.exe");
 	if(proc_addr == 0) {
 		utils::log("[-] Failed to get proc addr");
 		return 0;
@@ -65,7 +65,7 @@ int main() {
 		return 0;
 	}
 	
-	CreateRemoteThreadEx(hproc, nullptr, 64, reinterpret_cast<LPTHREAD_START_ROUTINE>(nt->OptionalHeader.AddressOfEntryPoint), nullptr, 0, nullptr, nullptr);
+	//CreateRemoteThreadEx(hproc, nullptr, 64, reinterpret_cast<LPTHREAD_START_ROUTINE>(nt->OptionalHeader.AddressOfEntryPoint), nullptr, 0, nullptr, nullptr);
 
 	utils::log("[+] Exiting program");
 	return 0;

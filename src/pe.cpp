@@ -9,14 +9,23 @@
 
 bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+	if(descriptor == nullptr) { return false; }
 
 	std::vector<std::string> module_names = utils::get_module_names(hproc);	
 	std::for_each(module_names.begin(), module_names.end(), [](std::string& str){
 		utils::to_lower(str);
 			});
 
-	if(descriptor == nullptr) { return false; }
-
+	HMODULE h = GetModuleHandleA("kernelbase.dll");
+	uintptr_t loadlib_addr = reinterpret_cast<uintptr_t>(GetProcAddress(h, "LoadLibraryA"));
+	if(!loadlib_addr){
+		utils::log("[-] Failed to get loadlib");
+		return 0;
+	}
+	std::cout << "h: " << std::hex << reinterpret_cast<uintptr_t>(h) << '\n';
+	std::cout << "my: " << std::hex << utils::get_module_addr(GetModuleHandleA(nullptr), "kernelbase.dll") << '\n';
+	uintptr_t loadlib_rva = loadlib_addr - reinterpret_cast<uintptr_t>(h);
+		std::cout << "loadlib rva: " << std::hex << loadlib_rva << '\n';	
 	while(descriptor->Name != 0){
 		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
 		
