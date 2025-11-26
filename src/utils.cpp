@@ -42,12 +42,11 @@ void* utils::get_proc_handle(std::string_view name){
 	return nullptr;
 }
 uintptr_t utils::get_module_addr(void* hproc, const char* module_name){
-	uintptr_t addr {};
 	HMODULE module_arr[1024]; // Same as void* arr[1024]
 	DWORD cb_needed {};
 
 	if(EnumProcessModulesEx(hproc, module_arr, sizeof(module_arr), &cb_needed, LIST_MODULES_ALL)){
-	int count = cb_needed / sizeof(HMODULE);
+		int count = cb_needed / sizeof(HMODULE);
 		for(int i = 0; i < count; ++i){
 			std::string name(max_path, '\0');
 
@@ -64,6 +63,29 @@ uintptr_t utils::get_module_addr(void* hproc, const char* module_name){
 		}
 	}
 	return 0;
+}
+
+std::vector<std::string> utils::get_module_names(void* hproc){
+	HMODULE module_arr[1024]; // Same as void* arr[1024]
+	DWORD cb_needed {};
+	
+	if(EnumProcessModulesEx(hproc, module_arr, sizeof(module_arr), &cb_needed, LIST_MODULES_ALL)){
+		std::vector<std::string> module_names;
+		int count = cb_needed / sizeof(HMODULE);
+
+		for(int i = 0; i < count; ++i){
+			std::string name(max_path, '\0');
+			DWORD length = GetModuleBaseNameA(hproc, module_arr[i], name.data(), max_path);
+
+			if(length > 0){
+				name.resize(length);
+			}
+			module_names.push_back(name);
+		}
+		return module_names;
+	}
+	return {};
+
 }
 
 bool utils::read_proc_mem(void* hproc, uintptr_t base_address, void* buffer, size_t size, size_t* num_bytes_read){

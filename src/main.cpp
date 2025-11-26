@@ -1,20 +1,8 @@
 #include <Windows.h>
 #include <minwinbase.h>
 #include <vector>
-#include <winnt.h>
 #include "../include/utils.h"
 #include "../include/pe.h"
-
-#include <string>
-
-
-
-void shellcode(uintptr_t AddressOfEntryPoint){
-	using dllmain_t = int(__stdcall*)(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserve);
-	dllmain_t dllmain = reinterpret_cast<dllmain_t>(AddressOfEntryPoint);
-	dllmain(nullptr, DLL_PROCESS_ATTACH, nullptr);
-	return;
-}
 
 int main() {
 	void* hproc = utils::get_proc_handle("Notepad.exe");
@@ -72,32 +60,12 @@ int main() {
 		utils::log("[-] Failed to relocate base");
 		return 0;
 	}
-	if(!PE::resolve_imports(dll_bytes, hproc, proc_addr, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
+	if(!PE::resolve_imports(dll_bytes, hproc, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
 		utils::log("[-] Failed to resolve imports");
 		return 0;
 	}
 	
-	std::size_t bytes_written{};
-	void* shellcode_addr = VirtualAllocEx(hproc, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	if(!shellcode_addr){
-		utils::log("[-] Failed to alloc mem for shellcode");
-		return 0;
-	}
-	if(!utils::write_proc_mem(hproc, reinterpret_cast<uintptr_t>(shellcode_addr), reinterpret_cast<void*>(&shellcode), 0x1000, &bytes_written)){
-		utils::log("[-] Failed to write shellcode to target");
-		return 0;
-	}
-
-	std::string shelladdr = std::to_string((uintptr_t)shellcode_addr);
-	utils::log(shelladdr.c_str());
-
-	CreateRemoteThread(hproc,
-			nullptr, 
-			64,
-			reinterpret_cast<LPTHREAD_START_ROUTINE>(shellcode_addr), 
-			reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(remote_dll_base) + nt->OptionalHeader.AddressOfEntryPoint), 
-			0, 
-			nullptr);
+	CreateRemoteThreadEx(hproc, nullptr, 64, reinterpret_cast<LPTHREAD_START_ROUTINE>(nt->OptionalHeader.AddressOfEntryPoint), nullptr, 0, nullptr, nullptr);
 
 	utils::log("[+] Exiting program");
 	return 0;

@@ -1,20 +1,45 @@
+#include <algorithm>
 #include <iostream>
+#include <unordered_map>
+#include <algorithm>
+
+#include "../include/windefs.h"
 #include "../include/pe.h"
 #include "../include/utils.h"
 
-bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t proc_addr, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
+bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+
+	std::vector<std::string> module_names = utils::get_module_names(hproc);	
+	std::for_each(module_names.begin(), module_names.end(), [](std::string& str){
+		utils::to_lower(str);
+			});
+
+	if(descriptor == nullptr) { return false; }
 
 	while(descriptor->Name != 0){
 		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
+		
+		auto it = std::find(module_names.begin(), module_names.end(), utils::to_lowero(dll_name));
+		// TODO: Add impl to load dll into target
+		if(it == module_names.end()){
+			std::cout << "[-] Target doesnt contain dll: " << dll_name << '\n';
+			std::cout << "[-] loading dll into mem...\n";
+		}
+
 		auto thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->FirstThunk);
 		auto original_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->OriginalFirstThunk);
 		uintptr_t local_module = utils::get_module_addr(GetModuleHandleA(nullptr), dll_name.c_str());
 		uintptr_t remote_module = utils::get_module_addr(hproc, dll_name.c_str());
 
-		std::cout << "[DLL] :" << dll_name << '\n';
-	
+		std::cout << "[DLL] : " << dll_name << ", remote addr: " << std::hex << remote_module  << '\n';
 		// Issue on crash could be here, not populating all functions only some
+		// TODO:
+		// [maybe] 1. get list of modules the target uses
+		// 2. iterate through the dll module list and compare all dlls used
+		// 3. IF the target doesnt have a dll that my dll uses, 
+		
+
 		while(thunk->u1.AddressOfData != 0){
 			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG){
 				utils::log("[-] ordinal used");
@@ -24,7 +49,7 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 							reinterpret_cast<LPCSTR>(original_thunk->u1.Ordinal)));
 
 				uintptr_t import_rva = import_addr - local_module;
-				thunk->u1.Function = local_module + import_rva;
+				thunk->u1.Function = remote_module + import_rva;
 			}
 			else {
 				auto name_table = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(local_dll_base + original_thunk->u1.AddressOfData);
@@ -46,8 +71,7 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 	return true;
 }
 
-/*
-bool PE::resolve_iat(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
+std::unordered_map<std::string, uintptr_t> get_module_info(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	NtQueryInformationProcess_t my_NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t>(GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess"));
 
 	auto iat_table = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(dll_bytes.data() + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
@@ -63,7 +87,7 @@ bool PE::resolve_iat(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_
 
 	if(status != STATUS_SUCCESS){
 		utils::log("[-] Failed to gret ProcessBasicInformation");
-		return false;
+		return {};
 	}
 
 	std::size_t bytes_read {};
@@ -75,9 +99,8 @@ bool PE::resolve_iat(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_
 		
 		i++;
 	}
-	return true;
+	return {};
 }
-*/
 
 bool PE::relocate_table(uintptr_t proc_addr, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	if(local_dll_base == nt->OptionalHeader.ImageBase){ return true; }
