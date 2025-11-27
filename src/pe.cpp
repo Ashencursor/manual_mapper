@@ -10,6 +10,10 @@
 #include "../include/utils.h"
 #include <print>
 
+
+// TODO: Make function to get the offset of an import within a module
+
+
 bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 	if(descriptor == nullptr) { return false; }
@@ -20,23 +24,24 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 		utils::to_lower(str);
 			});
 	void* local_hproc = utils::get_proc_handle("manual_mapper.exe");
-	auto hmod = reinterpret_cast<uintptr_t>(utils::get_module_addr(local_hproc, "kernel32.dll"));
+	auto local_module_addr = utils::get_module_addr(local_hproc, "kernel32.dll");
 	
 	uintptr_t local_proc_addr = utils::get_module_addr(local_hproc, "manual_mapper.exe");// Cant do GetModuleHandleA(nullptr), GetModuleHandleA("manual_mapper.exe")
-	//uintptr_t sigma = reinterpret_cast<uintptr_t>(utils::get_proc_handle("manual_mapper.exe"));
-	//std::cout << "reinterpret_cast<uintptr_t>(h): " << reinterpret_cast<uintptr_t>(local_hproc) << '\n';	
-	//std::cout << "proc_addr: " << std::hex << proc_addr << '\n';
 
-	uintptr_t loadlib_addr = reinterpret_cast<uintptr_t>(GetProcAddress(reinterpret_cast<HMODULE>(utils::get_module_addr(local_hproc, "kernel32.dll")), "LoadLibraryA"));
+	uintptr_t loadlib_addr = reinterpret_cast<uintptr_t>(
+			GetProcAddress(
+				reinterpret_cast<HMODULE>(local_module_addr), 
+				"LoadLibraryA")
+			);
+
 	if(!loadlib_addr){
 		utils::log("[-] Failed to get loadlib");
 		return 0;
 	}
-	//std::cout << "h: " << std::hex << reinterpret_cast<uintptr_t>(hmod) << '\n';
-	//std::cout << "my: " << std::hex << utils::get_module_addr(utils::get_proc_handle("manual_mapper.exe"), "kernelbase.dll") << '\n';
-	uintptr_t loadlib_rva = loadlib_addr - hmod;
+	uintptr_t loadlib_rva = loadlib_addr - utils::get_module_addr(local_hproc, "kernel32.dll");
 	uintptr_t loadlib_remote_addr = utils::get_module_addr(hproc, "kernel32.dll") + loadlib_rva;
-	std::cout << "loadlib rva: " << std::hex << loadlib_rva << '\n';	
+	std::println("load lib rva {:X}", loadlib_rva);	
+	std::println("remote loadlib addr: {:X}", loadlib_remote_addr);
 
 	while(descriptor->Name != 0){
 		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
@@ -57,7 +62,10 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 		std::cout << "[DLL] : " << dll_name << ", remote addr: " << std::hex << remote_module  << '\n';
 
 		while(thunk->u1.AddressOfData != 0){
-			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG){
+			std::println("[+] Checking whether its by ordinal or name");
+
+			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
+			{
 				utils::log("[-] ordinal used");
 				uintptr_t import_addr = reinterpret_cast<uintptr_t>(
 						GetProcAddress(
@@ -67,8 +75,11 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 				uintptr_t import_rva = import_addr - local_module;
 				thunk->u1.Function = remote_module + import_rva;
 			}
-			else {
+			else 
+			{
+				std::println("[+] Name");
 				auto name_table = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(local_dll_base + original_thunk->u1.AddressOfData);
+				std::println("[+] getting import name");
 
 				std::string import_name = name_table->Name;
 				uintptr_t import_addr = reinterpret_cast<uintptr_t>(
@@ -82,9 +93,11 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 				uintptr_t import_rva = import_addr - local_module;
 				thunk->u1.Function = remote_module + import_rva;
 			}
+			std::println("[+] Going to next import");
 			thunk++;
 			original_thunk++;
 		}
+		std::println("[+] Going to next dll");
 		descriptor++;
 	}
 	return true;
