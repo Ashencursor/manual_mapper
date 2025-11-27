@@ -1,8 +1,18 @@
 #include <Windows.h>
 #include <minwinbase.h>
+#include <minwindef.h>
 #include <vector>
+#include <winnt.h>
 #include "../include/utils.h"
 #include "../include/pe.h"
+
+
+void shellcode(uintptr_t entry){
+	using dllmain_t = int(__stdcall*)(HINSTANCE hmod, DWORD reason, LPVOID reserved);
+	dllmain_t dllmain = reinterpret_cast<dllmain_t>(entry);
+	dllmain(reinterpret_cast<HINSTANCE>(entry), DLL_PROCESS_ATTACH, nullptr);
+	return;
+}
 
 int main() {
 	void* hproc = utils::get_proc_handle("64bit testexe.exe");
@@ -64,8 +74,25 @@ int main() {
 		utils::log("[-] Failed to resolve imports");
 		return 0;
 	}
-	
-	//CreateRemoteThreadEx(hproc, nullptr, 64, reinterpret_cast<LPTHREAD_START_ROUTINE>(nt->OptionalHeader.AddressOfEntryPoint), nullptr, 0, nullptr, nullptr);
+
+	void* shellcode_addr = VirtualAllocEx(hproc, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	if(!shellcode_addr){
+		utils::log("[-] Failed to alloc shellcode");
+		return 0;
+	}
+	std::size_t bytes_written {};
+	if(!WriteProcessMemory(hproc, shellcode_addr, reinterpret_cast<LPCVOID>(&shellcode), 0x1000, &bytes_written)){
+		utils::log("[-] Failed to write shellcode");
+		return 0;
+	}
+	CreateRemoteThread(
+			hproc, 
+			nullptr,
+			64, 
+			reinterpret_cast<LPTHREAD_START_ROUTINE>(shellcode_addr), 
+			reinterpret_cast<LPVOID>(reinterpret_cast<uintptr_t>(remote_dll_base) + nt->OptionalHeader.AddressOfEntryPoint), 
+			0,
+			nullptr);
 
 	utils::log("[+] Exiting program");
 	return 0;

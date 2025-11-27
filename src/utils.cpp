@@ -33,10 +33,10 @@ void* utils::get_proc_handle(std::string_view name){
 	//void* handle = nullptr;
 	while(Process32Next(handle_snapshot, &pe32)){
 		// Iterate proc entries
-		std::cout << pe32.szExeFile << '\n';
+		//std::cout << pe32.szExeFile << '\n';
 		if(name == pe32.szExeFile){ 
 			log("[+] Got proc ID, returning handle");
-			std::cout << pe32.th32ProcessID << '\n';
+			//std::cout << pe32.th32ProcessID << '\n';
 			return OpenProcess(PROCESS_ALL_ACCESS, false, pe32.th32ProcessID); 
 		}
 	}
@@ -60,7 +60,7 @@ uintptr_t utils::get_module_addr(void* hproc, const char* module_name){
 			}
 
 			if(_stricmp(name.c_str(), module_name) == 0){
-				std::cout << "[+] " << module_name << " base address: "<< module_arr[i] << '\n';
+				//std::cout << "[+] " << module_name << " base address: "<< module_arr[i] << '\n';
 				return reinterpret_cast<uintptr_t>(module_arr[i]);
 			}
 		}
