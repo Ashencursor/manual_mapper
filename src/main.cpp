@@ -58,7 +58,6 @@ int main() {
 	}
 	void* local_dll_base = VirtualAlloc(nullptr, image_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
 
-
 	// 1. Must write headers and sections to local_dll_base 
 	memcpy(local_dll_base, dll_bytes.data(), nt->OptionalHeader.SizeOfHeaders);
 	// 2. write sections to be aligned with virtual address space

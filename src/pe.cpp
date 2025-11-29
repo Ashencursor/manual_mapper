@@ -4,100 +4,88 @@
 //#include <minwinbase.h>
 #include <unordered_map>
 #include <algorithm>
+#include <print>
+#include <vector>
+#include <string_view>
 
 #include "../include/windefs.h"
 #include "../include/pe.h"
 #include "../include/utils.h"
-#include <print>
 
 
 // TODO: Make function to get the offset of an import within a module
 
+static uintptr_t remote_loadlibrarya;
+
+uintptr_t get_local_module_addr(std::string_view name){
+	void* hmod = GetModuleHandleA(name.data());
+	if(!hmod){
+		hmod = LoadLibraryA(name.data());
+	}
+	if(!hmod){
+		return 0;
+	}
+	return reinterpret_cast<uintptr_t>(hmod);
+}
 
 bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
-	if(descriptor == nullptr) { return false; }
-
-	//std::println("[+] getting module names");
-	std::vector<std::string> module_names = utils::get_module_names(hproc);	
-	std::for_each(module_names.begin(), module_names.end(), [](std::string& str){
-		utils::to_lower(str);
-			});
 	void* local_hproc = utils::get_proc_handle("manual_mapper.exe");
-	auto local_module_addr = utils::get_module_addr(local_hproc, "kernel32.dll");
-	
-	uintptr_t local_proc_addr = utils::get_module_addr(local_hproc, "manual_mapper.exe");// Cant do GetModuleHandleA(nullptr), GetModuleHandleA("manual_mapper.exe")
 
-	uintptr_t loadlib_addr = reinterpret_cast<uintptr_t>(
-			GetProcAddress(
-				reinterpret_cast<HMODULE>(local_module_addr), 
-				"LoadLibraryA")
-			);
-
-	if(!loadlib_addr){
-		utils::log("[-] Failed to get loadlib");
-		return 0;
-	}
-	uintptr_t loadlib_rva = loadlib_addr - utils::get_module_addr(local_hproc, "kernel32.dll");
-	uintptr_t loadlib_remote_addr = utils::get_module_addr(hproc, "kernel32.dll") + loadlib_rva;
-	std::println("load lib rva {:X}", loadlib_rva);	
-	std::println("remote loadlib addr: {:X}", loadlib_remote_addr);
-
+		
 	while(descriptor->Name != 0){
 		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
-		
-		auto it = std::find(module_names.begin(), module_names.end(), utils::to_lowero(dll_name));
-		if(it == module_names.end()){
-			std::cout << "[-] Target doesnt contain dll: " << dll_name << '\n';
-			std::cout << "[-] loading dll into mem...\n";
-			CreateRemoteThread(hproc, 0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(loadlib_remote_addr), reinterpret_cast<LPVOID>(dll_name.data()), 0, 0);
-		}
+		std::cout << "[DLL] :" << dll_name << '\n';
 
 		auto thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->FirstThunk);
 		auto original_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->OriginalFirstThunk);
-		uintptr_t local_module = utils::get_module_addr(local_hproc, dll_name.data());
-		std::cout << "!@DDSDSDSD\n";  // TEST
-		uintptr_t remote_module = utils::get_module_addr(hproc, dll_name.c_str());
 
-		std::cout << "[DLL] : " << dll_name << ", remote addr: " << std::hex << remote_module  << '\n';
+		uintptr_t local_module = reinterpret_cast<uintptr_t>(GetModuleHandleA(dll_name.c_str()));
+		if(!local_module){
+			utils::log("[-] Failed to get local module addr\n [-] Attempting to loadlibrary");
+			if(!get_local_module_addr(dll_name.c_str())){
+				utils::log("[-] Failed to load and get the address of the module");
+				return false;
+			}
+			else {
+				utils::log("[+] Successfully loaaded and got the address of the module");
+			}
+		}
+
+		uintptr_t remote_module = utils::get_module_addr(hproc, dll_name.c_str());
+		if(!remote_module){
+			utils::log("[-] Failed to get remote module addr");
+			return false;
+		}
 
 		while(thunk->u1.AddressOfData != 0){
-			std::println("[+] Checking whether its by ordinal or name");
 
-			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG)
-			{
+			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG){
 				utils::log("[-] ordinal used");
-				uintptr_t import_addr = reinterpret_cast<uintptr_t>(
-						GetProcAddress(
-							GetModuleHandleA(dll_name.c_str()), 
-							reinterpret_cast<LPCSTR>(original_thunk->u1.Ordinal)));
-
-				uintptr_t import_rva = import_addr - local_module;
-				thunk->u1.Function = remote_module + import_rva;
+				/*
+				uintptr_t local_module_addr = reinterpret_cast<uintptr_t>(GetProcAddress(
+							reinterpret_cast<HMODULE>(local_module),
+							MAKEINTRESOURCE(original_thunk->u1.Ordinal)
+							));
+							*/
 			}
-			else 
-			{
-				std::println("[+] Name");
+			else {
 				auto name_table = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(local_dll_base + original_thunk->u1.AddressOfData);
-				std::println("[+] getting import name");
 
-				std::string import_name = name_table->Name;
-				uintptr_t import_addr = reinterpret_cast<uintptr_t>(
-						GetProcAddress(
-							reinterpret_cast<HMODULE>(utils::get_module_addr(local_hproc, dll_name.c_str())),
-							import_name.c_str())
-						);
+				auto import_name = reinterpret_cast<const char*>(name_table->Name);
+				//std::cout << import_name << '\n';
+				//uintptr_t import_addr = reinterpret_cast<uintptr_t>(
+					//	GetProcAddress(GetModuleHandleA(dll_name.data()), import_name)
+						//);
+				//std::cout << "import: " << import_name << " addr:  " << import_addr << '\n';
 
-				std::cout << "import: " << import_name << " addr:  " << std::hex << import_addr << '\n';
-
-				uintptr_t import_rva = import_addr - local_module;
-				thunk->u1.Function = remote_module + import_rva;
+				//uintptr_t import_rva = import_addr - local_module;
+				//thunk->u1.Function;// = remote_module + import_rva;
 			}
-			std::println("[+] Going to next import");
+
 			thunk++;
 			original_thunk++;
 		}
-		std::println("[+] Going to next dll");
 		descriptor++;
 	}
 	return true;
