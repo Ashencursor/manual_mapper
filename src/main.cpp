@@ -87,7 +87,7 @@ int main() {
 	CreateRemoteThread(
 			hproc, 
 			nullptr,
-			64, 
+			0, 
 			reinterpret_cast<LPTHREAD_START_ROUTINE>(shellcode_addr), 
 			reinterpret_cast<LPVOID>(reinterpret_cast<uintptr_t>(remote_dll_base) + nt->OptionalHeader.AddressOfEntryPoint), 
 			0,

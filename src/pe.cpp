@@ -15,8 +15,7 @@
 
 // TODO: Make function to get the offset of an import within a module
 
-static uintptr_t remote_loadlibrarya;
-
+// WORKS
 uintptr_t get_local_module_addr(std::string_view name){
 	void* hmod = GetModuleHandleA(name.data());
 	if(!hmod){
@@ -28,34 +27,58 @@ uintptr_t get_local_module_addr(std::string_view name){
 	return reinterpret_cast<uintptr_t>(hmod);
 }
 
+// WORKS
+uintptr_t get_remote_module_addr(void* hproc, std::string name, uintptr_t remote_loadlibrarya){
+	std::size_t bytes_written {};
+	void* str_addr = VirtualAllocEx(hproc, nullptr, name.size(), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+
+	bool written = WriteProcessMemory(hproc, str_addr, name.c_str(), name.size(), &bytes_written);	
+	if(!written){
+		std::println("[-] Failed to write string to target mem");
+		return false;
+	}
+	CreateRemoteThread(hproc, 0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(remote_loadlibrarya), reinterpret_cast<LPVOID>(str_addr), 0, nullptr);
+	return utils::get_module_addr(hproc, name.c_str());
+}
+
 bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 	void* local_hproc = utils::get_proc_handle("manual_mapper.exe");
 
-		
+	uintptr_t local_kernel32 = get_local_module_addr("kernel32.dll");
+	uintptr_t remote_kernel32 = utils::get_module_addr(hproc, "kernel32.dll");
+
+	uintptr_t local_loadliba = reinterpret_cast<uintptr_t>(GetProcAddress(GetModuleHandleA("kernel32.dll"), "LoadLibraryA"));
+	uintptr_t loadlibraryrva = local_loadliba - local_kernel32;
+
+	uintptr_t remote_loadlibrarya = remote_kernel32 + loadlibraryrva;
+	
+
 	while(descriptor->Name != 0){
+		if(descriptor->Name > 100000){
+			std::cout << "Huge name rva\n";
+			return true;
+		}
 		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
+		//std::cout << "printing dll name: \n";
 		std::cout << "[DLL] :" << dll_name << '\n';
 
 		auto thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->FirstThunk);
 		auto original_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->OriginalFirstThunk);
 
-		uintptr_t local_module = reinterpret_cast<uintptr_t>(GetModuleHandleA(dll_name.c_str()));
-		if(!local_module){
-			utils::log("[-] Failed to get local module addr\n [-] Attempting to loadlibrary");
-			if(!get_local_module_addr(dll_name.c_str())){
-				utils::log("[-] Failed to load and get the address of the module");
-				return false;
-			}
-			else {
-				utils::log("[+] Successfully loaaded and got the address of the module");
-			}
-		}
+		uintptr_t local_module = get_local_module_addr(dll_name.c_str());
 
+		if(!local_module){
+			//utils::log("[-] Failed to load/get the address of the module");
+		}
+		else {
+			//utils::log("[+] Successfully loaaded/got the address of the module");
+		}
+		
 		uintptr_t remote_module = utils::get_module_addr(hproc, dll_name.c_str());
 		if(!remote_module){
-			utils::log("[-] Failed to get remote module addr");
-			return false;
+			std::println("[-] Failed to get remote module addr\n[-] Attempting to loadlibrarya it into the target");
+			remote_module = get_remote_module_addr(hproc, dll_name, remote_loadlibrarya);
 		}
 
 		while(thunk->u1.AddressOfData != 0){
@@ -71,9 +94,17 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 			}
 			else {
 				auto name_table = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(local_dll_base + original_thunk->u1.AddressOfData);
+				if(!name_table){
+					utils::log("[-] Invalid name_table or name");
+					continue;
+				}
 
 				auto import_name = reinterpret_cast<const char*>(name_table->Name);
-				//std::cout << import_name << '\n';
+				if (original_thunk->u1.AddressOfData > 1000000) {
+					std::println("[-] Failed to get the import name(likely bc of a huge rva)");
+					break;
+				}
+				std::cout << import_name << '\n';
 				//uintptr_t import_addr = reinterpret_cast<uintptr_t>(
 					//	GetProcAddress(GetModuleHandleA(dll_name.data()), import_name)
 						//);
