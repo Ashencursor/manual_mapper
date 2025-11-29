@@ -55,6 +55,7 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 	
 
 	while(descriptor->Name != 0){
+		// TODO: Find better way to stop looping
 		if(descriptor->Name > 100000){
 			std::cout << "Huge name rva\n";
 			return true;
@@ -100,6 +101,7 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 				}
 
 				auto import_name = reinterpret_cast<const char*>(name_table->Name);
+				// TODO: Find better way to stop looping
 				if (original_thunk->u1.AddressOfData > 1000000) {
 					std::println("[-] Failed to get the import name(likely bc of a huge rva)");
 					break;
@@ -153,14 +155,14 @@ std::unordered_map<std::string, uintptr_t> get_module_info(std::vector<std::uint
 	return {};
 }
 
-bool PE::relocate_table(uintptr_t proc_addr, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
+bool PE::relocate_table(uintptr_t remote_dll_base, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	if(local_dll_base == nt->OptionalHeader.ImageBase){ return true; }
 
 	auto reloc_block = reinterpret_cast<PIMAGE_BASE_RELOCATION>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress);
 	//auto reloc_dir_size = reinterpret_cast<std::size_t>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size);
 	//auto reloc_end = reinterpret_cast<uintptr_t>(reloc_block->VirtualAddress + reloc_dir_size);
 
-	uintptr_t base_offset = proc_addr - nt->OptionalHeader.ImageBase;
+	uintptr_t base_offset = remote_dll_base - nt->OptionalHeader.ImageBase;
 	
 	while(reloc_block->VirtualAddress != 0){
 		std::size_t block_size {};
