@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <iostream>
 //#include <minwinbase.h>
+#include <memory>
 #include <unordered_map>
 #include <algorithm>
 #include <print>
@@ -14,15 +15,20 @@
 
 
 // TODO: Make function to get the offset of an import within a module
-
+bool check_rva(uintptr_t rva, uintptr_t image_base, std::size_t image_size){
+	if(rva + image_base < image_base + image_size){
+		return false;
+	}
+	return true;
+}
 // WORKS
 uintptr_t get_local_module_addr(std::string_view name){
 	void* hmod = GetModuleHandleA(name.data());
 	if(!hmod){
 		hmod = LoadLibraryA(name.data());
-	}
-	if(!hmod){
-		return 0;
+		if(!hmod){
+			return 0;
+		}	
 	}
 	return reinterpret_cast<uintptr_t>(hmod);
 }
@@ -41,7 +47,7 @@ uintptr_t get_remote_module_addr(void* hproc, std::string name, uintptr_t remote
 	return utils::get_module_addr(hproc, name.c_str());
 }
 
-bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
+bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t proc_addr, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 	void* local_hproc = utils::get_proc_handle("manual_mapper.exe");
 
@@ -53,16 +59,26 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 
 	uintptr_t remote_loadlibrarya = remote_kernel32 + loadlibraryrva;
 	
+	IMAGE_DOS_HEADER dos_remote = {};
+	ReadProcessMemory(hproc, reinterpret_cast<void*>(proc_addr), &dos_remote, sizeof(dos_remote), nullptr);
+
+	IMAGE_NT_HEADERS nt_remote = {};
+	ReadProcessMemory(hproc,
+                  reinterpret_cast<void*>(proc_addr + dos_remote.e_lfanew),
+                  &nt_remote,
+                  sizeof(nt_remote),
+                  nullptr);
+	DWORD image_size = nt_remote.OptionalHeader.SizeOfImage;
 
 	while(descriptor->Name != 0){
 		// TODO: Find better way to stop looping
-		if(descriptor->Name > 100000){
-			std::cout << "Huge name rva\n";
-			return true;
+		if(check_rva(descriptor->Name, local_dll_base, nt->OptionalHeader.SizeOfImage)){
+			std::cout << "[-] Huge name rva\n";
+			break;
 		}
 		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
 		//std::cout << "printing dll name: \n";
-		std::cout << "[DLL] :" << dll_name << '\n';
+		std::cout << "[DLL]: " << dll_name << '\n';
 
 		auto thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->FirstThunk);
 		auto original_thunk = reinterpret_cast<PIMAGE_THUNK_DATA>(local_dll_base + descriptor->OriginalFirstThunk);
@@ -102,7 +118,7 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 
 				auto import_name = reinterpret_cast<const char*>(name_table->Name);
 				// TODO: Find better way to stop looping
-				if (original_thunk->u1.AddressOfData > 1000000) {
+				if(check_rva(original_thunk->u1.AddressOfData, proc_addr, nt->OptionalHeader.SizeOfImage)){
 					std::println("[-] Failed to get the import name(likely bc of a huge rva)");
 					break;
 				}

@@ -13,32 +13,14 @@ struct ShellParams {
 };
 
 unsigned char stub[] = {
-	// RCX = &ShellParams
 
-	// save params->remote_base into RDX
-	0x48, 0x8B, 0x11,                // mov rdx, [rcx]
-
-	// load params->entry into RAX
-	0x48, 0x8B, 0x41, 0x08,          // mov rax, [rcx+8]
-
-	// RCX = remote_base (DllMain arg1)
-	0x48, 0x89, 0xD1,                // mov rcx, rdx
-
-	// EDX = DLL_PROCESS_ATTACH
-	0xBA, 0x01, 0x00, 0x00, 0x00,    // mov edx, 1
-
-	// R8 = NULL
-	0x49, 0xC7, 0xC0, 0,0,0,0,       // mov r8, 0
-
-	// jmp rax
-	0xFF, 0xE0
 };
 
 
-void shellcode(ShellParams* params){
+void shellcode(ShellParams params){
 	using dllmain_t = int(__stdcall*)(HINSTANCE hmod, DWORD reason, LPVOID reserved);
-	dllmain_t dllmain = reinterpret_cast<dllmain_t>(params->entry);
-	dllmain(reinterpret_cast<HINSTANCE>(params->remote_base), DLL_PROCESS_ATTACH, nullptr);
+	dllmain_t dllmain = reinterpret_cast<dllmain_t>(params.entry);
+	dllmain(reinterpret_cast<HINSTANCE>(params.remote_base), DLL_PROCESS_ATTACH, nullptr);
 	return;
 }
 
@@ -97,7 +79,7 @@ int main() {
 		utils::log("[-] Failed to relocate base");
 		return 0;
 	}
-	if(!PE::resolve_imports(dll_bytes, hproc, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
+	if(!PE::resolve_imports(dll_bytes, hproc, proc_addr, reinterpret_cast<uintptr_t>(local_dll_base), nt)){
 		utils::log("[-] Failed to resolve imports");
 		return 0;
 	}
@@ -108,22 +90,22 @@ int main() {
 	}
  
 	// TESTING
-	void* shellcode_addr = VirtualAllocEx(hproc, nullptr, sizeof(stub), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	WriteProcessMemory(hproc, shellcode_addr, &stub, sizeof(stub), nullptr);
+	void* shellcode_addr = VirtualAllocEx(hproc, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	WriteProcessMemory(hproc, shellcode_addr, reinterpret_cast<LPCVOID>(&shellcode), 0x1000, nullptr);
 
 	ShellParams params{
     reinterpret_cast<uintptr_t>(remote_dll_base),
     reinterpret_cast<uintptr_t>(remote_dll_base) + nt->OptionalHeader.AddressOfEntryPoint
 	};
-
-	printf("REMOTE BASE = 0x%llX\n", (unsigned long long)remote_dll_base);
-	printf("EPOFF = 0x%lX\n", nt->OptionalHeader.AddressOfEntryPoint);
-	printf("ENTRY = 0x%llX\n", (unsigned long long)params.entry);
-
 	void* remote_params = VirtualAllocEx(hproc, nullptr, sizeof(params), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	
+	printf("REMOTE BASE = 0x%X\n", remote_dll_base);
+	printf("EPOFF = 0x%X\n", nt->OptionalHeader.AddressOfEntryPoint);
+	printf("ENTRY = 0x%X\n", params.entry);
+
 	WriteProcessMemory(hproc, remote_params, &params, sizeof(params), nullptr);
 
-	CreateRemoteThread(
+		/*HANDLE h_thread = CreateRemoteThread(
 			hproc, 
 			nullptr,
 			0, 
@@ -131,7 +113,10 @@ int main() {
 			reinterpret_cast<LPVOID>(remote_params), 
 			0,
 			nullptr);
-
+	if(!h_thread){
+		utils::log("[-] CreateRemoteThread Failed");
+		return 0;
+	}*/
 	utils::log("[+] Exiting program");
 	return 0;
 }
