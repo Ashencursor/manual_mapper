@@ -16,17 +16,17 @@ void utils::log(const char* str){
 		std::cout << str << '\n';
 		std::cin.get();
 	}
-void* utils::get_proc_handle(std::string_view name){
+void* utils::get_proc_handle(std::wstring_view name){
 	auto handle_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);// List of proc entries
 	if(handle_snapshot == INVALID_HANDLE_VALUE){ 
-		log("[-] Failed to get the snapshot");
+		utils::log("[-] Failed to get the snapshot");
 		return nullptr;
 	} // -1, snapshot fail, ret -1
 	PROCESSENTRY32 pe32{};
 	pe32.dwSize = sizeof(PROCESSENTRY32);
 
 	if(!Process32First(handle_snapshot, &pe32)){
-		log("[-] Failed to  retrieve info about the first process");
+		utils::log("[-] Failed to  retrieve info about the first process");
 		return nullptr;
 	}
 
@@ -34,8 +34,8 @@ void* utils::get_proc_handle(std::string_view name){
 	while(Process32Next(handle_snapshot, &pe32)){
 		// Iterate proc entries
 		//std::cout << pe32.szExeFile << '\n';
-		if(name == pe32.szExeFile){ 
-			log("[+] Got proc ID, returning handle");
+		if(name.compare(pe32.szExeFile) == 0){ 
+			utils::log("[+] Got proc ID, returning handle");
 			//std::cout << pe32.th32ProcessID << '\n';
 			return OpenProcess(PROCESS_ALL_ACCESS, false, pe32.th32ProcessID); 
 		}

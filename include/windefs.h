@@ -4,10 +4,10 @@
 #include <winternl.h>
 
 typedef NTSTATUS(NTAPI* NtQueryInformationProcess_t)(
-  [in]            HANDLE           ProcessHandle,
-  [in]            PROCESSINFOCLASS ProcessInformationClass,
-  [out]           PVOID            ProcessInformation,
-  [in]            ULONG            ProcessInformationLength,
-  [out, optional] PULONG           ReturnLength
+             HANDLE           ProcessHandle,
+             PROCESSINFOCLASS ProcessInformationClass,
+             PVOID            ProcessInformation,
+             ULONG            ProcessInformationLength,
+   PULONG           ReturnLength
 );
 

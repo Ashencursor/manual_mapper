@@ -13,7 +13,7 @@ struct ShellParams {
 };
 
 unsigned char stub[] = {
-
+	0x0
 };
 
 
@@ -25,20 +25,20 @@ void shellcode(ShellParams params){
 }
 
 int main() {
-	void* hproc = utils::get_proc_handle("64bit testexe.exe");
+	void* hproc = utils::get_proc_handle(L"Notepad.exe");
 	if(hproc == nullptr){
 		utils::log("[-] Failed to get process handle");		
 		return 0; 
 	}
 
-	uintptr_t proc_addr = utils::get_module_addr(hproc, "64bit testexe.exe");
+	uintptr_t proc_addr = utils::get_module_addr(hproc, "Notepad.exe");
 	if(proc_addr == 0) {
 		utils::log("[-] Failed to get proc addr");
 		return 0;
 	}
 	
 	std::vector<std::uint8_t> dll_bytes;
-	if(!utils::load_bytes("C:\\Users\\ashen\\Desktop\\projects\\test\\build\\test.dll", dll_bytes)){
+	if(!utils::load_bytes("C:\\Users\\osawi\\source\\repos\\dll test\\x64\\Release\\dll_test.dll", dll_bytes)){
 		utils::log("[-] Failed to load dll bytes");
 		return 0;
 	}
@@ -53,7 +53,7 @@ int main() {
 		return 0;
 	}
 
-	auto preferred_base = reinterpret_cast<uintptr_t>(nt->OptionalHeader.ImageBase);
+	auto preferred_base = nt->OptionalHeader.ImageBase;
 	auto image_size = nt->OptionalHeader.SizeOfImage;
 
 	// Find where in target to write to
@@ -90,33 +90,22 @@ int main() {
 	}
  
 	// TESTING
-	void* shellcode_addr = VirtualAllocEx(hproc, nullptr, 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	WriteProcessMemory(hproc, shellcode_addr, reinterpret_cast<LPCVOID>(&shellcode), 0x1000, nullptr);
 
-	ShellParams params{
-    reinterpret_cast<uintptr_t>(remote_dll_base),
-    reinterpret_cast<uintptr_t>(remote_dll_base) + nt->OptionalHeader.AddressOfEntryPoint
-	};
-	void* remote_params = VirtualAllocEx(hproc, nullptr, sizeof(params), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	
-	printf("REMOTE BASE = 0x%X\n", remote_dll_base);
-	printf("EPOFF = 0x%X\n", nt->OptionalHeader.AddressOfEntryPoint);
-	printf("ENTRY = 0x%X\n", params.entry);
 
-	WriteProcessMemory(hproc, remote_params, &params, sizeof(params), nullptr);
 
-		/*HANDLE h_thread = CreateRemoteThread(
+		HANDLE h_thread = CreateRemoteThread(
 			hproc, 
 			nullptr,
 			0, 
-			reinterpret_cast<LPTHREAD_START_ROUTINE>(shellcode_addr), 
-			reinterpret_cast<LPVOID>(remote_params), 
+			reinterpret_cast<LPTHREAD_START_ROUTINE>(reinterpret_cast<uintptr_t>(remote_dll_base) + nt->OptionalHeader.AddressOfEntryPoint),
+			0, 
 			0,
 			nullptr);
 	if(!h_thread){
 		utils::log("[-] CreateRemoteThread Failed");
 		return 0;
-	}*/
+	}
 	utils::log("[+] Exiting program");
 	return 0;
 }

@@ -14,13 +14,7 @@
 #include "../include/utils.h"
 
 
-// TODO: Make function to get the offset of an import within a module
-bool check_rva(uintptr_t rva, uintptr_t image_base, std::size_t image_size){
-	if(rva + image_base < image_base + image_size){
-		return false;
-	}
-	return true;
-}
+
 // WORKS
 uintptr_t get_local_module_addr(std::string_view name){
 	void* hmod = GetModuleHandleA(name.data());
@@ -49,7 +43,7 @@ uintptr_t get_remote_module_addr(void* hproc, std::string name, uintptr_t remote
 
 bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t proc_addr, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
 	auto descriptor = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(local_dll_base + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
-	void* local_hproc = utils::get_proc_handle("manual_mapper.exe");
+	void* local_hproc = utils::get_proc_handle(L"manual_mapper.exe");
 
 	uintptr_t local_kernel32 = get_local_module_addr("kernel32.dll");
 	uintptr_t remote_kernel32 = utils::get_module_addr(hproc, "kernel32.dll");
@@ -71,11 +65,6 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 	DWORD image_size = nt_remote.OptionalHeader.SizeOfImage;
 
 	while(descriptor->Name != 0){
-		// TODO: Find better way to stop looping
-		if(check_rva(descriptor->Name, local_dll_base, nt->OptionalHeader.SizeOfImage)){
-			std::cout << "[-] Huge name rva\n";
-			break;
-		}
 		std::string dll_name = reinterpret_cast<const char*>(local_dll_base + descriptor->Name);
 		//std::cout << "printing dll name: \n";
 		std::cout << "[DLL]: " << dll_name << '\n';
@@ -102,12 +91,12 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 
 			if(original_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG){
 				utils::log("[-] ordinal used");
-				/*
+				
 				uintptr_t local_module_addr = reinterpret_cast<uintptr_t>(GetProcAddress(
 							reinterpret_cast<HMODULE>(local_module),
-							MAKEINTRESOURCE(original_thunk->u1.Ordinal)
+							MAKEINTRESOURCEA(original_thunk->u1.Ordinal & 0xFFFF)
 							));
-							*/
+							
 			}
 			else {
 				auto name_table = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(local_dll_base + original_thunk->u1.AddressOfData);
@@ -116,20 +105,15 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 					continue;
 				}
 
-				auto import_name = reinterpret_cast<const char*>(name_table->Name);
-				// TODO: Find better way to stop looping
-				if(check_rva(original_thunk->u1.AddressOfData, proc_addr, nt->OptionalHeader.SizeOfImage)){
-					std::println("[-] Failed to get the import name(likely bc of a huge rva)");
-					break;
-				}
+				auto import_name = reinterpret_cast<const char*>(name_table->Name);				
 				std::cout << import_name << '\n';
-				//uintptr_t import_addr = reinterpret_cast<uintptr_t>(
-					//	GetProcAddress(GetModuleHandleA(dll_name.data()), import_name)
-						//);
-				//std::cout << "import: " << import_name << " addr:  " << import_addr << '\n';
+				uintptr_t import_addr = reinterpret_cast<uintptr_t>(
+						GetProcAddress(GetModuleHandleA(dll_name.data()), import_name)
+						);
+				std::cout << "import: " << import_name << " addr:  " << import_addr << '\n';
 
-				//uintptr_t import_rva = import_addr - local_module;
-				//thunk->u1.Function;// = remote_module + import_rva;
+				uintptr_t import_rva = import_addr - local_module;
+				thunk->u1.Function = remote_module + import_rva;
 			}
 
 			thunk++;
@@ -141,7 +125,7 @@ bool PE::resolve_imports(std::vector<std::uint8_t>& dll_bytes, void* hproc, uint
 }
 
 std::unordered_map<std::string, uintptr_t> get_module_info(std::vector<std::uint8_t>& dll_bytes, void* hproc, uintptr_t local_dll_base, PIMAGE_NT_HEADERS nt){
-	NtQueryInformationProcess_t my_NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t>(GetProcAddress(GetModuleHandle("ntdll.dll"), "NtQueryInformationProcess"));
+	NtQueryInformationProcess_t my_NtQueryInformationProcess = reinterpret_cast<NtQueryInformationProcess_t>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess"));
 
 	auto iat_table = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(dll_bytes.data() + nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
 

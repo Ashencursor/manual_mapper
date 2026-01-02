@@ -8,7 +8,7 @@
 
 namespace utils {
 	void log(const char* str);
-	void* get_proc_handle(std::string_view name);
+	void* get_proc_handle(std::wstring_view name);
 	uintptr_t get_module_addr(void* hproc, const char* module_name);
 	std::vector<std::string> get_module_names(void* hproc);
 
