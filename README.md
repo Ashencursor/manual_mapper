@@ -11,4 +11,8 @@
   - helper functions for `resolve_imports`(e.g: make info static or something about the remoteloadlibrary)
   - function to write shellcode and params
      
-- [ ] offtopic: Since the `remote_load_librarya` works to my understanding(from what ive witnessed in systeminformer and whatnot), I could be lazy and just do   `createremotethread` with `remote_load_librarya` and load dllmain by passing the filepath to my dll or whatever `loadlibrarya` takes
+# offtopic: Since the `remote_load_librarya` works to my understanding(from what ive witnessed in systeminformer and whatnot), I could be lazy and just do   `createremotethread` with `remote_load_librarya` and load dllmain by passing the filepath to my dll or whatever `loadlibrarya` takes
+
+
+# Current:
+- It works when i use `CreateRemoteThread`, discarding every parameter. This however, will not suffice because if i want to recursivley call my mapper to load dependencies, I need to use the parameters. I might also need to use TLS callbacks. So what Ill do now is impliment some sort of shellcode todo all of this. BUT FIRST, I will make my code more readable, stick to a specific logging/printing standard, and collect my thoughts.
